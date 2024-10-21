@@ -2,6 +2,7 @@ import { INestApplicationContext, WebSocketAdapter } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { SocketStateService } from './socket-state.service';
 import socketio from 'socket.io';
+import { RedisPropagatorService } from 'src/app/shared/redis-propagator/redis-propagator.service';
 
 interface TokenPayload {
   readonly userId: string;
@@ -15,20 +16,21 @@ export class SocketStateAdapter extends IoAdapter implements WebSocketAdapter {
   public constructor(
     private readonly app: INestApplicationContext,
     private readonly socketStateService: SocketStateService,
+    private readonly redisPropagatorService: RedisPropagatorService,
   ) {
     super(app);
   }
 
-  private server: socketio.Server;
-
   // @ts-expect-error type
   public create(
     port: number,
-    options: socketio.ServerOptions,
+    // @ts-expect-error type
+    options: socketio.ServerOptions = {},
   ): socketio.Server {
-    this.server = super.createIOServer(port, options);
+    const server = super.createIOServer(port, options);
+    this.redisPropagatorService.injectSocketServer(server);
 
-    this.server.use(async (socket: AuthenticatedSocket, next) => {
+    server.use(async (socket: AuthenticatedSocket, next) => {
       const token =
         socket.handshake.query?.token ||
         socket.handshake.headers?.authorization;
@@ -53,7 +55,7 @@ export class SocketStateAdapter extends IoAdapter implements WebSocketAdapter {
       }
     });
 
-    return this.server;
+    return server;
   }
 
   public bindClientConnect(
